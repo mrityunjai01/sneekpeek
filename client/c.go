@@ -2,16 +2,17 @@ package main
 
 import (
 	"bufio"
-
+    "fmt"
 	"log"
 	"net"
 	"strconv"
-
-
-
+    "os"
+    "encoding/gob"
+    "image/jpeg"
+    "image"
+    "strings"
 	"github.com/pkg/errors"
-
-	"encoding/gob"
+    "time"
 	"flag"
 )
 type complexData struct {
@@ -26,7 +27,11 @@ const (
     Port = ":6100"
 )
 
-
+func check(e error) {
+    if e != nil {
+        log.Println(e)
+    }
+}
 func Open(addr string) (*bufio.ReadWriter, net.Conn, error) {
     log.Println("dial "+ addr)
     conn, err := net.Dial("tcp", addr)
@@ -37,57 +42,61 @@ func Open(addr string) (*bufio.ReadWriter, net.Conn, error) {
     return bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn)), conn, nil
 }
 func client(ip string) error {
-    testStruct := complexData{
-        N: 23,
-        S: "some string",
-        C: &complexData{
-            N: 256,
-            S: "thats a recursive string",
-        },
-    }
     rw, conn, err := Open(ip + Port)
     defer conn.Close()
+
     if err != nil {
         return errors.Wrap(err, "Client: Failed to open connection to "+ip+Port)
     }
-    log.Println("Send the string request.")
-	n, err := rw.WriteString("STRING\n")
-	if err != nil {
-		return errors.Wrap(err, "Could not send the STRING request ("+strconv.Itoa(n)+" bytes written)")
-	}
-	n, err = rw.WriteString("Additional data.\n")
-	if err != nil {
-		return errors.Wrap(err, "Could not send additional STRING data ("+strconv.Itoa(n)+" bytes written)")
-	}
-	log.Println("Flush the buffer.")
-	err = rw.Flush()
-	if err != nil {
-		return errors.Wrap(err, "Flush failed.")
-	}
-    log.Println("Read the reply.")
-	response, err := rw.ReadString('\n')
-	if err != nil {
-		return errors.Wrap(err, "Client: Failed to read the reply: '"+response+"'")
-	}
+    consoleTextReader := bufio.NewReader(os.Stdin)
+    for {
+        fmt.Print("-> ")
+        text, _ := consoleTextReader.ReadString('\n')
+        text = strings.Replace(text, "\r\n", "", -1)
+        if strings.Compare(text, "close") == 0 {
+            fmt.Println("shutting")
+            return nil
 
-	log.Println("STRING request: got a response:", response)
-    log.Println("Send a struct as GOB:")
-	log.Printf("Outer complexData struct: \n%#v\n", testStruct)
-	log.Printf("Inner complexData struct: \n%#v\n", testStruct.C)
-	enc := gob.NewEncoder(rw)
-	n, err = rw.WriteString("GOB\n")
-	if err != nil {
-		return errors.Wrap(err, "Could not write GOB data ("+strconv.Itoa(n)+" bytes written)")
-	}
-	err = enc.Encode(testStruct)
-	if err != nil {
-		return errors.Wrapf(err, "Encode failed for struct: %#v", testStruct)
-	}
-	err = rw.Flush()
-	if err != nil {
-		return errors.Wrap(err, "Flush failed.")
-	}
-	return nil
+        } else if strings.Compare(text, "rec") == 0 {
+            fmt.Println("working")
+            n, err := rw.WriteString("rec\n")
+        	if err != nil {
+        		fmt.Println(err, "Could not send the STRING ("+strconv.Itoa(n)+" bytes written)")
+                continue
+        	}
+
+            log.Println("Flush the buffer.")
+        	err = rw.Flush()
+        	if err != nil {
+        		fmt.Println(errors.Wrap(err, "Flush failed."))
+                continue
+        	}
+            var data image.RGBA
+        	dec := gob.NewDecoder(rw)
+        	err = dec.Decode(&data)
+        	if err != nil {
+        		log.Println("Error decoding GOB data:", err)
+        		continue
+        	}
+        	log.Printf("received the image")
+
+            s := time.Now().Format(time.Stamp)
+            s = strings.Replace(s, ":", "_", -1)
+            log.Println(s)
+            f, err := os.Create("C:\\Users\\ASUS\\Pictures\\gofiles\\sneek_"+s+".jpeg")
+            check(err)
+            defer f.Close()
+            w := bufio.NewWriter(f)
+            err = jpeg.Encode(w, data.SubImage(image.Rect(0, 0, 1920, 1080)), nil)
+            check(err)
+            w.Flush()
+            fmt.Printf("wrote the jpeg\n")
+
+        } else {
+            fmt.Println("can't understand you")
+
+        }
+    }
 
 }
 

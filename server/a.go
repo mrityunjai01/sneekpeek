@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 
 	"encoding/gob"
+    "github.com/kbinani/screenshot"
 
 )
 type complexData struct {
@@ -28,23 +29,11 @@ type HandleFunc func(*bufio.ReadWriter)
 
 type EndPoint struct {
     listener net.Listener
-    handler map[string]HandleFunc
+
 
     m sync.RWMutex
 }
-func NewEndPoint() *EndPoint {
-    return &EndPoint{
-        handler: map[string]HandleFunc{},
-    }
 
-}
-
-
-func (e *EndPoint) AddHandle (name string, f HandleFunc) {
-    e.m.Lock()
-    e.handler[name] = f
-    e.m.Unlock()
-}
 
 func (e *EndPoint) Listen() error {
     var err error
@@ -54,13 +43,13 @@ func (e *EndPoint) Listen() error {
     }
     log.Println("Listen on", e.listener.Addr().String())
     for {
-        log.Println("Accept an incoming connection request")
+        log.Println("Listening for incoming connection request")
         conn, err := e.listener.Accept()
         if err != nil {
 			log.Println("Failed accepting a connection request:", err)
 			continue
 		}
-        log.Println("Handle incoming messages")
+        log.Println("ACcepted a connection request, listening for incoming messages")
         go e.handleMessages(conn)
     }
 }
@@ -69,7 +58,7 @@ func (e *EndPoint) handleMessages (conn net.Conn) {
     rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
     defer conn.Close()
     for {
-		log.Print("Receive command '")
+		log.Print("listening for command '")
 		cmd, err := rw.ReadString('\n')
 		switch {
 		case err == io.EOF:
@@ -80,16 +69,25 @@ func (e *EndPoint) handleMessages (conn net.Conn) {
 			return
 		}
         cmd = strings.Trim(cmd, "\n")
+
         log.Println(cmd+"'")
 
-        e.m.RLock()
-        handleCommand, ok := e.handler[cmd]
-        e.m.RUnlock()
-        if !ok {
-            log.Println("Command "+cmd+ " is not registered")
+        if strings.Compare(cmd, "close") == 0 {
+            log.Println("closing connection")
             return
+        } else if strings.Compare(cmd, "rec") != 0 {
+            log.Println("rejected command")
+            continue
         }
-        handleCommand(rw)
+        capturedImage, err := screenshot.CaptureDisplay(0)
+
+    	enc := gob.NewEncoder(rw)
+    	err = enc.Encode(capturedImage)
+    	if err != nil {
+    		log.Println("Error decoding GOB data:", err)
+    		continue
+    	}
+        log.Println("successfully sent")
     }
 
 }
@@ -114,7 +112,7 @@ func handleStrings(rw *bufio.ReadWriter){
 }
 func handleGob(rw *bufio.ReadWriter) {
 	log.Print("Receive GOB data:")
-	var data complexData
+    var data complexData
 	dec := gob.NewDecoder(rw)
 	err := dec.Decode(&data)
 	if err != nil {
@@ -127,9 +125,7 @@ func handleGob(rw *bufio.ReadWriter) {
 
 
 func server() error {
-    endp := NewEndPoint()
-    endp.AddHandle("STRING", handleStrings)
-    endp.AddHandle("GOB", handleGob)
+    endp := &EndPoint{}
     return endp.Listen()
 }
 
