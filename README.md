@@ -6,7 +6,7 @@
 3. cd client && go build .
 4. you have the built executables, now run server.exe on the computer you want to sneek into, make sure that you give server.exe access through the firewall if you're on a public network
 5. run the server executable
-6. on your machine, run client -connect <ip of the other machine on the same network>
+6. on your machine, run client -connect [ip of the other machine on the same network]
 
 
 ## How does it work?
