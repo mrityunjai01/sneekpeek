@@ -43,11 +43,12 @@ func Open(addr string) (*bufio.ReadWriter, net.Conn, error) {
 }
 func client(ip string) error {
     rw, conn, err := Open(ip + Port)
-    defer conn.Close()
-
     if err != nil {
         return errors.Wrap(err, "Client: Failed to open connection to "+ip+Port)
     }
+
+    defer conn.Close()
+
     consoleTextReader := bufio.NewReader(os.Stdin)
     for {
         fmt.Print("-> ")
